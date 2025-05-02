@@ -1,82 +1,154 @@
-import data
 from selenium import webdriver
-from selenium.webdriver import Keys
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions
-from selenium.webdriver.support.wait import WebDriverWait
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import WebDriverException
+from selenium.webdriver.common.keys import Keys
+import pytest
+import logging
+import json
+import time
+import data
 
+# Configurar logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# no modificar
+# Recuperar código de confirmación
+
 def retrieve_phone_code(driver) -> str:
-    """Este código devuelve un número de confirmación de teléfono y lo devuelve como un string.
-    Utilízalo cuando la aplicación espere el código de confirmación para pasarlo a tus pruebas.
-    El código de confirmación del teléfono solo se puede obtener después de haberlo solicitado en la aplicación."""
-
-    import json
-    import time
-    from selenium.common import WebDriverException
     code = None
-    for i in range(10):
+    for _ in range(10):
         try:
-            logs = [log["message"] for log in driver.get_log('performance') if log.get("message")
-                    and 'api/v1/number?number' in log.get("message")]
+            logs = [log["message"] for log in driver.get_log('performance') if log.get("message") and 'api/v1/number?number' in log.get("message")]
             for log in reversed(logs):
                 message_data = json.loads(log)["message"]
-                body = driver.execute_cdp_cmd('Network.getResponseBody',
-                                              {'requestId': message_data["params"]["requestId"]})
+                body = driver.execute_cdp_cmd('Network.getResponseBody', {'requestId': message_data["params"]["requestId"]})
                 code = ''.join([x for x in body['body'] if x.isdigit()])
         except WebDriverException:
             time.sleep(1)
             continue
-        if not code:
-            raise Exception("No se encontró el código de confirmación del teléfono.\n"
-                            "Utiliza 'retrieve_phone_code' solo después de haber solicitado el código en tu aplicación.")
-        return code
+        if code:
+            return code
+    raise Exception("No se encontró el código de confirmación del teléfono.")
 
+# Página principal de Urban Routes
 
 class UrbanRoutesPage:
-    from_field = (By.ID, 'from')
-    to_field = (By.ID, 'to')
-
     def __init__(self, driver):
         self.driver = driver
 
-    def set_from(self, from_address):
-        self.driver.find_element(*self.from_field).send_keys(from_address)
+    def set_from_address(self, from_address):
+        from_input = WebDriverWait(self.driver, 10).until(EC.presence_of_element_located((By.ID, "from")))
+        from_input.clear()
+        from_input.send_keys(from_address)
 
-    def set_to(self, to_address):
-        self.driver.find_element(*self.to_field).send_keys(to_address)
+    def set_to_address(self, to_address):
+        to_input = WebDriverWait(self.driver, 10).until(EC.presence_of_element_located((By.ID, "to")))
+        to_input.clear()
+        to_input.send_keys(to_address)
 
-    def get_from(self):
-        return self.driver.find_element(*self.from_field).get_property('value')
+    def set_route(self, from_address, to_address):
+        self.set_from_address(from_address)
+        self.set_to_address(to_address)
 
-    def get_to(self):
-        return self.driver.find_element(*self.to_field).get_property('value')
+    def select_comfort_tariff(self):
+        comfort_tariff = WebDriverWait(self.driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//div[@class='tariff-button' and .//div[text()='Comfort']]"))
+        )
+        comfort_tariff.click()
 
+    def enter_phone_number(self, phone):
+        phone_input = WebDriverWait(self.driver, 10).until(EC.presence_of_element_located((By.NAME, "phone")))
+        phone_input.clear()
+        phone_input.send_keys(phone)
+        send_code_button = WebDriverWait(self.driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Enviar código')]"))
+        )
+        send_code_button.click()
 
+    def enter_confirmation_code(self, code):
+        code_input = WebDriverWait(self.driver, 10).until(EC.presence_of_element_located((By.NAME, "code")))
+        code_input.send_keys(code)
+        confirm_button = WebDriverWait(self.driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Confirmar')]"))
+        )
+        confirm_button.click()
 
+    def add_credit_card(self, card_number, card_code):
+        WebDriverWait(self.driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Agregar tarjeta')]"))
+        ).click()
+
+        number_input = WebDriverWait(self.driver, 10).until(EC.presence_of_element_located((By.ID, "number")))
+        number_input.clear()
+        number_input.send_keys(card_number)
+
+        code_input = WebDriverWait(self.driver, 10).until(EC.presence_of_element_located((By.ID, "code")))
+        code_input.clear()
+        code_input.send_keys(card_code)
+        code_input.send_keys(Keys.TAB)
+
+        link_button = WebDriverWait(self.driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Enlace')]"))
+        )
+        link_button.click()
+
+    def write_message_for_driver(self, message):
+        message_input = WebDriverWait(self.driver, 10).until(EC.presence_of_element_located((By.NAME, "comment")))
+        message_input.clear()
+        message_input.send_keys(message)
+
+    def request_blanket_and_tissues(self):
+        blanket_checkbox = WebDriverWait(self.driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//label[contains(., 'Manta')]"))
+        )
+        blanket_checkbox.click()
+
+        tissues_checkbox = WebDriverWait(self.driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//label[contains(., 'Pañuelos')]"))
+        )
+        tissues_checkbox.click()
+
+    def request_ice_cream(self, quantity=2):
+        plus_button = WebDriverWait(self.driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//div[contains(., 'Helado')]/following-sibling::div//button[contains(., '+')]"))
+        )
+        for _ in range(quantity):
+            plus_button.click()
+
+    def get_from_address(self):
+        return self.driver.find_element(By.ID, "from").get_attribute("value")
+
+    def get_to_address(self):
+        return self.driver.find_element(By.ID, "to").get_attribute("value")
+
+# Clase de prueba
 class TestUrbanRoutes:
+    def setup_method(self):
+        options = webdriver.ChromeOptions()
+        options.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
+        self.driver = webdriver.Chrome(options=options)
+        self.driver.maximize_window()
 
-    driver = None
+    def teardown_method(self):
+        self.driver.quit()
 
-    @classmethod
-    def setup_class(cls):
-        # no lo modifiques, ya que necesitamos un registro adicional habilitado para recuperar el código de confirmación del teléfono
-        from selenium.webdriver import DesiredCapabilities
-        capabilities = DesiredCapabilities.CHROME
-        capabilities["goog:loggingPrefs"] = {'performance': 'ALL'}
-        cls.driver = webdriver.Chrome(desired_capabilities=capabilities)
-
-    def test_set_route(self):
+    def test_user_can_order_taxi(self):
         self.driver.get(data.urban_routes_url)
-        routes_page = UrbanRoutesPage(self.driver)
-        address_from = data.address_from
-        address_to = data.address_to
-        routes_page.set_route(address_from, address_to)
-        assert routes_page.get_from() == address_from
-        assert routes_page.get_to() == address_to
+        page = UrbanRoutesPage(self.driver)
 
+        page.set_route(data.address_from, data.address_to)
+        page.select_comfort_tariff()
+        page.enter_phone_number(data.phone_number)
 
-    @classmethod
-    def teardown_class(cls):
-        cls.driver.quit()
+        code = retrieve_phone_code(self.driver)
+        page.enter_confirmation_code(code)
+
+        page.add_credit_card(data.card_number, data.card_code)
+        page.write_message_for_driver(data.message_for_driver)
+        page.request_blanket_and_tissues()
+        page.request_ice_cream()
+
+        assert page.get_from_address() == data.address_from
+        assert page.get_to_address() == data.address_to
