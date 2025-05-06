@@ -15,7 +15,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Recuperar código de confirmación
-
 def retrieve_phone_code(driver) -> str:
     code = None
     for _ in range(10):
@@ -33,7 +32,6 @@ def retrieve_phone_code(driver) -> str:
     raise Exception("No se encontró el código de confirmación del teléfono.")
 
 # Página principal de Urban Routes
-
 class UrbanRoutesPage:
     def __init__(self, driver):
         self.driver = driver
@@ -134,21 +132,51 @@ class TestUrbanRoutes:
     def teardown_method(self):
         self.driver.quit()
 
-    def test_user_can_order_taxi(self):
-        self.driver.get(data.urban_routes_url)
+    def test_set_route(self):
         page = UrbanRoutesPage(self.driver)
-
         page.set_route(data.address_from, data.address_to)
-        page.select_comfort_tariff()
-        page.enter_phone_number(data.phone_number)
-
-        code = retrieve_phone_code(self.driver)
-        page.enter_confirmation_code(code)
-
-        page.add_credit_card(data.card_number, data.card_code)
-        page.write_message_for_driver(data.message_for_driver)
-        page.request_blanket_and_tissues()
-        page.request_ice_cream()
-
         assert page.get_from_address() == data.address_from
         assert page.get_to_address() == data.address_to
+
+    def test_select_plan(self):
+        page = UrbanRoutesPage(self.driver)
+        page.select_comfort_tariff()
+        comfort_selected = self.driver.find_element(By.XPATH, "//div[@class='tariff-button' and .//div[text()='Comfort']]")
+        assert comfort_selected.is_selected()
+
+    def test_fill_phone_number(self):
+        page = UrbanRoutesPage(self.driver)
+        page.enter_phone_number(data.phone_number)
+        phone_input = self.driver.find_element(By.NAME, "phone")
+        assert phone_input.get_attribute("value") == data.phone_number
+
+    def test_fill_card(self):
+        page = UrbanRoutesPage(self.driver)
+        page.add_credit_card(data.card_number, data.card_code)
+        link_button = self.driver.find_element(By.XPATH, "//button[contains(text(), 'Enlace')]")
+        assert link_button.is_enabled()
+
+    def test_comment_for_driver(self):
+        page = UrbanRoutesPage(self.driver)
+        page.write_message_for_driver(data.message_for_driver)
+        message_input = self.driver.find_element(By.NAME, "comment")
+        assert message_input.get_attribute("value") == data.message_for_driver
+
+    def test_order_blanket_and_handkerchiefs(self):
+        page = UrbanRoutesPage(self.driver)
+        page.request_blanket_and_tissues()
+        blanket_checkbox = self.driver.find_element(By.XPATH, "//label[contains(., 'Manta')]")
+        tissues_checkbox = self.driver.find_element(By.XPATH, "//label[contains(., 'Pañuelos')]")
+        assert blanket_checkbox.is_selected()
+        assert tissues_checkbox.is_selected()
+
+    def test_order_2_ice_creams(self):
+        page = UrbanRoutesPage(self.driver)
+        page.request_ice_cream(quantity=2)
+        ice_cream_count = self.driver.find_element(By.XPATH, "//div[contains(., 'Helado')]//span[@class='quantity']")
+        assert ice_cream_count.text == "2"
+
+    def test_car_search_model_appears(self):
+        page = UrbanRoutesPage(self.driver)
+        car_model = self.driver.find_element(By.XPATH, "//div[@class='car-model']")
+        assert car_model.is_displayed()
